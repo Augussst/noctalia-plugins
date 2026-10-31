@@ -1,0 +1,49 @@
+{
+  "bad_extension": "Invalid file extension setting – using md",
+  "confirm_delete": "Delete?",
+  "copied": "Copied",
+  "copy_code": "Copy code",
+  "counts": "{words} words · {chars} chars",
+  "drag_to_reorder": "Drag to reorder",
+  "edit": "Edit",
+  "editing": "Editing…",
+  "editor_placeholder": "Write your note…",
+  "empty": "No notes yet – create one with +",
+  "image_missing": "Image not found",
+  "launcher": {
+    "append_title": "Add to Scratchpad",
+    "appended": "Added to scratchpad",
+    "clip_title": "New Note From Clipboard",
+    "home_subtitle": "Browse All Notes",
+    "home_title": "Open Notes",
+    "new_title": "New Note",
+    "open_subtitle": "Open Note"
+  },
+  "no_matching_notes": "No matching notes",
+  "note_missing": "Note not found",
+  "open_note_link": "Open note",
+  "pinned_no_drag": "Pinned notes stay on top",
+  "preview": "Preview",
+  "rename_exists": "A note with that name already exists",
+  "save_failed": "Failed to save note",
+  "saved": "Saved",
+  "scratchpad": "Scratchpad",
+  "settings": {
+    "extension": {
+      "description": "Extension for note files (without the dot); only files with this extension are listed",
+      "label": "File Extension"
+    },
+    "glyph": {
+      "label": "Bar Glyph"
+    },
+    "notes_dir": {
+      "description": "Where note files are stored",
+      "label": "Notes Directory"
+    }
+  },
+  "sort_custom": "Your order (drag notes)",
+  "sort_date": "By last change",
+  "sort_name": "By name",
+  "title": "Notes",
+  "web_image": "web image"
+}

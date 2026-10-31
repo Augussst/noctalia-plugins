@@ -1,0 +1,54 @@
+# Augussst's Noctalia plugins
+
+Plugins for the [Noctalia](https://github.com/noctalia-dev/noctalia) shell.
+
+> **Vibe-coded.** These were written with Claude Code and tested on one
+> machine (Lenovo LOQ 15IRX9, Noctalia 5.4.0, niri). Read the code before you
+> trust it. Each plugin's README lists what it does, its limits, and what it
+> reads, writes and runs.
+
+| Plugin | What it does |
+| --- | --- |
+| [Notes MD](notes-md/README.md) | Markdown notes in a side panel with an interactive preview: tick tasks, open links and `[[note links]]`, copy code, see images, drag to reorder. A fork of the official Notes plugin. |
+| [Lenovo LOQ Camera Switch](lenovo-loq-camera-switch/README.md) | Bar icon and OSD for the physical camera shutter switch. **Tested on the LOQ 15IRX9 only**; needs a one-time root setup. |
+
+## Install
+
+This repository is a Noctalia plugin source. Add it once:
+
+    noctalia msg plugins source add augussst git https://github.com/Augussst/noctalia-plugins
+
+Then enable the plugins you want:
+
+    noctalia msg plugins enable augussst/notes-md
+    noctalia msg plugins enable augussst/lenovo-loq-camera-switch
+
+You can also add the source in **Settings → Plugins → Add source**. After
+enabling, add the plugin's widget to your bar in Noctalia's settings, and read
+the plugin's README for any setup it needs.
+
+## Update
+
+    noctalia msg plugins update augussst
+
+## Uninstall
+
+    noctalia msg plugins disable augussst/notes-md
+    noctalia msg plugins disable augussst/lenovo-loq-camera-switch
+    noctalia msg plugins source remove augussst
+
+## License
+
+MIT, see [LICENSE](LICENSE). Notes MD is based on the official Notes plugin by
+the Noctalia contributors; see [notes-md/LICENSE](notes-md/LICENSE).
+
+## Adding or changing a plugin
+
+Each plugin is a folder whose name matches the part of its id after the `/`.
+`catalog.toml` is generated from the manifests: a GitHub Action regenerates and
+commits it on every push to `main`. To regenerate it locally:
+
+    python3 tools/update_catalog.py
+
+Bump `version` in a plugin's `plugin.toml` when you change it; the catalog's
+`updated_at` follows the version.

@@ -1,0 +1,35 @@
+{
+  "bad_extension": "Estensione del file non valida – utilizzo md",
+  "confirm_delete": "Eliminare?",
+  "counts": "{words} parole · {chars} caratteri",
+  "editing": "Modifica...",
+  "editor_placeholder": "Scrivi la tua nota...",
+  "empty": "Ancora nessuna nota - creane una con +",
+  "launcher": {
+    "append_title": "Aggiungi a Scratchpad",
+    "appended": "Aggiunto a scratchpad",
+    "clip_title": "Nuova Nota dagli Appunti",
+    "home_subtitle": "Naviga tutte le Note",
+    "home_title": "Apri note",
+    "new_title": "Nuova nota",
+    "open_subtitle": "Apri nota"
+  },
+  "rename_exists": "Una nota con quel nome esiste già",
+  "save_failed": "Salvataggio nota fallito",
+  "saved": "Salvato",
+  "scratchpad": "Blocco Appunti",
+  "settings": {
+    "extension": {
+      "description": "Estensioni per i file nota (senza il punto); solo i file con questa estensioni vengono elencati",
+      "label": "Estensione file"
+    },
+    "glyph": {
+      "label": "Glifo barra"
+    },
+    "notes_dir": {
+      "description": "Dove i file nota vengono salvati",
+      "label": "Percorso Note"
+    }
+  },
+  "title": "Note"
+}

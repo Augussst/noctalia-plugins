@@ -1,0 +1,35 @@
+{
+  "bad_extension": "Paràmetre d'extensió de fitxer no vàlid - s'utilitzarà md",
+  "confirm_delete": "Esborrar?",
+  "counts": "{words} paraules · {chars} caràcters",
+  "editing": "Editant…",
+  "editor_placeholder": "Escriu la teva nota…",
+  "empty": "Encara no hi ha notes - crea'n una amb +",
+  "launcher": {
+    "append_title": "Afegeix al bloc de notes",
+    "appended": "Afegit al bloc de notes",
+    "clip_title": "Nota nova des del porta-retalls",
+    "home_subtitle": "Veure totes les notes",
+    "home_title": "Obre la nota",
+    "new_title": "Nota nova",
+    "open_subtitle": "Obre la nota"
+  },
+  "rename_exists": "ja existeix una nota amb aquest nom",
+  "save_failed": "No s'ha pogut desar la nota",
+  "saved": "Desat",
+  "scratchpad": "Notes ràpides",
+  "settings": {
+    "extension": {
+      "description": "Extensió dels fitxers de notes (sense el punt); només es llisten els fitxers amb aquesta extensió",
+      "label": "Extensió de fitxer"
+    },
+    "glyph": {
+      "label": "Glif de la barra"
+    },
+    "notes_dir": {
+      "description": "On es desen els fitxers de notes",
+      "label": "Carpeta de notes"
+    }
+  },
+  "title": "Notes"
+}
