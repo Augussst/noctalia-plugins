@@ -37,11 +37,6 @@ the plugin's README for any setup it needs.
     noctalia msg plugins disable augussst/lenovo-loq-camera-switch
     noctalia msg plugins source remove augussst
 
-## License
-
-MIT, see [LICENSE](LICENSE). Notes MD is based on the official Notes plugin by
-the Noctalia contributors; see [notes-md/LICENSE](notes-md/LICENSE).
-
 ## Working on the plugins
 
 See [DEVELOPING.md](DEVELOPING.md): repo layout, the edit/test/publish loop,
@@ -52,14 +47,3 @@ catalog, and adding a new plugin.
 
 MIT, see [LICENSE](LICENSE). Notes MD is based on the official Notes plugin by
 the Noctalia contributors; see [notes-md/LICENSE](notes-md/LICENSE).
-
-## Adding or changing a plugin
-
-Each plugin is a folder whose name matches the part of its id after the `/`.
-`catalog.toml` is generated from the manifests: a GitHub Action regenerates and
-commits it on every push to `main`. To regenerate it locally:
-
-    python3 tools/update_catalog.py
-
-Bump `version` in a plugin's `plugin.toml` when you change it; the catalog's
-`updated_at` follows the version.
