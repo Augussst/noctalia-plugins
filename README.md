@@ -42,6 +42,17 @@ the plugin's README for any setup it needs.
 MIT, see [LICENSE](LICENSE). Notes MD is based on the official Notes plugin by
 the Noctalia contributors; see [notes-md/LICENSE](notes-md/LICENSE).
 
+## Working on the plugins
+
+See [DEVELOPING.md](DEVELOPING.md): repo layout, the edit/test/publish loop,
+how to run a plugin straight from a local folder, tests, the generated
+catalog, and adding a new plugin.
+
+## License
+
+MIT, see [LICENSE](LICENSE). Notes MD is based on the official Notes plugin by
+the Noctalia contributors; see [notes-md/LICENSE](notes-md/LICENSE).
+
 ## Adding or changing a plugin
 
 Each plugin is a folder whose name matches the part of its id after the `/`.
