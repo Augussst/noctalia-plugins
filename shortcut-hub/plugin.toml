@@ -1,6 +1,6 @@
 id = "augussst/shortcut-hub"
 name = "Shortcut Hub"
-version = "1.0.0"
+version = "1.0.1"
 # 42: height = "content" on the panel. 43: container color roles.
 # Also uses ui callback closures (9), require (22), argv runAsync (24),
 # getSetting (26) and container tooltips (32).

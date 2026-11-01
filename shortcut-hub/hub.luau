@@ -77,6 +77,13 @@ end
 
 local GAP = 8
 
+-- Radii follow the shell's corner setting ([shell] corner_radius_scale).
+-- Reading it through getSetting also reloads the panel when it changes.
+local function radius(base)
+  local scale = tonumber(noctalia.getSetting("shell.corner_radius_scale")) or 1
+  return base * math.max(scale, 0)
+end
+
 local function tileWidth(cols)
   return math.floor((size.content - GAP * (cols - 1)) / cols)
 end
@@ -93,7 +100,7 @@ local function tile(item, index, width)
     align = "center",
     justify = "center",
     fill = "surface_container",
-    radius = 12,
+    radius = radius(12),
     tooltip = label,
     onClick = function()
       items.run(item)
@@ -154,7 +161,7 @@ local function savedRow(item, index)
     paddingH = 8,
     paddingV = 4,
     fill = "surface_container",
-    radius = 8,
+    radius = radius(8),
   }, {
     ui.glyph({ name = glyph, size = 16, color = "primary" }),
     ui.column({ flexGrow = 1, gap = 0 }, {
