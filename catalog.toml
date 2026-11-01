@@ -25,3 +25,16 @@ icon = "notes"
 description = "Markdown notes with an interactive preview: tasks, links, note links, quotes, code copy and images."
 plugin_api = 32
 tags = ["productivity"]
+
+[[plugin]]
+id = "augussst/shortcut-hub"
+name = "Shortcut Hub"
+version = "1.0.0"
+updated_at = 1793526383
+added_at = 1793526383
+author = "augussst"
+license = "MIT"
+icon = "layout-grid"
+description = "A panel of shortcuts to plugin panels, shell panels and commands, with no limit on how many. Also searchable from the launcher."
+plugin_api = 43
+tags = ["productivity", "launcher"]

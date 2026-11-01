@@ -11,6 +11,7 @@ Plugins for the [Noctalia](https://github.com/noctalia-dev/noctalia) shell.
 | --- | --- |
 | [Notes MD](notes-md/README.md) | Markdown notes in a side panel with an interactive preview: tick tasks, open links and `[[note links]]`, copy code, see images, drag to reorder. A fork of the official Notes plugin. |
 | [Lenovo LOQ Camera Switch](lenovo-loq-camera-switch/README.md) | Bar icon and OSD for the physical camera shutter switch. **Tested on the LOQ 15IRX9 only**; needs a one-time root setup. |
+| [Shortcut Hub](shortcut-hub/README.md) | A panel of shortcuts with no limit: other plugins' panels, shell panels and commands. Also searchable from the launcher (`/hub`). |
 
 ## Install
 
@@ -22,6 +23,7 @@ Then enable the plugins you want:
 
     noctalia msg plugins enable augussst/notes-md
     noctalia msg plugins enable augussst/lenovo-loq-camera-switch
+    noctalia msg plugins enable augussst/shortcut-hub
 
 You can also add the source in **Settings → Plugins → Add source**. After
 enabling, add the plugin's widget to your bar in Noctalia's settings, and read
@@ -35,6 +37,7 @@ the plugin's README for any setup it needs.
 
     noctalia msg plugins disable augussst/notes-md
     noctalia msg plugins disable augussst/lenovo-loq-camera-switch
+    noctalia msg plugins disable augussst/shortcut-hub
     noctalia msg plugins source remove augussst
 
 ## Working on the plugins

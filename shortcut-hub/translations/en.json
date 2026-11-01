@@ -1,0 +1,66 @@
+{
+  "title": "Shortcuts",
+  "editing": "Edit shortcuts",
+  "edit": "Edit",
+  "done": "Done",
+  "close": "Close",
+  "add": "Add",
+  "remove": "Remove",
+  "move_up": "Move up",
+  "move_down": "Move down",
+  "empty": "No shortcuts yet. Add plugin panels, shell panels or commands.",
+  "command_missing": "Enter a command first",
+  "section": {
+    "saved": "In the hub",
+    "saved_empty": "Nothing yet. Add items from the lists below.",
+    "plugins": "Plugin panels",
+    "plugins_empty": "No other enabled plugin has a panel.",
+    "builtin": "Shell panels",
+    "command": "Custom command"
+  },
+  "form": {
+    "label": "Label",
+    "command": "Command, e.g. noctalia msg nightlight-toggle",
+    "glyph": "Icon name (optional), e.g. moon",
+    "hint": "Runs with /bin/sh -c. Icon names are Tabler icons."
+  },
+  "kind": {
+    "plugin": "Plugin panel",
+    "builtin": "Shell panel",
+    "command": "Command"
+  },
+  "builtin": {
+    "launcher": "Launcher",
+    "control_center": "Control Center",
+    "clipboard": "Clipboard",
+    "wallpaper": "Wallpaper",
+    "session": "Session Menu",
+    "settings": "Settings"
+  },
+  "launcher": {
+    "open_hub": "Shortcut Hub",
+    "open_hub_subtitle": "Open the shortcuts panel",
+    "in_hub": "In hub"
+  },
+  "shortcut": {
+    "label": "More"
+  },
+  "settings": {
+    "panel_size": {
+      "label": "Panel size",
+      "description": "Which size the bar widget, the control-center tile and the launcher open. Keybinds can open a size directly: augussst/shortcut-hub:compact, :panel (normal) or :wide.",
+      "options": {
+        "compact": "Compact (3 columns)",
+        "normal": "Normal (4 columns)",
+        "wide": "Wide (6 columns)"
+      }
+    },
+    "columns": {
+      "label": "Columns",
+      "description": "Tiles per row. 0 uses the panel size's default."
+    },
+    "glyph": {
+      "label": "Icon"
+    }
+  }
+}

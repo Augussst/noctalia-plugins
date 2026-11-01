@@ -1,0 +1,91 @@
+id = "augussst/shortcut-hub"
+name = "Shortcut Hub"
+version = "1.0.0"
+# 42: height = "content" on the panel. 43: container color roles.
+# Also uses ui callback closures (9), require (22), argv runAsync (24),
+# getSetting (26) and container tooltips (32).
+plugin_api = 43
+author = "augussst"
+license = "MIT"
+tags = ["productivity", "launcher"]
+icon = "layout-grid"
+description = "A panel of shortcuts to plugin panels, shell panels and commands, with no limit on how many. Also searchable from the launcher."
+
+[[setting]]
+key = "panel_size"
+type = "select"
+label_key = "settings.panel_size.label"
+description_key = "settings.panel_size.description"
+default = "normal"
+options = [
+  { value = "compact", label_key = "settings.panel_size.options.compact" },
+  { value = "normal", label_key = "settings.panel_size.options.normal" },
+  { value = "wide", label_key = "settings.panel_size.options.wide" },
+]
+
+[[setting]]
+key = "columns"
+type = "int"
+label_key = "settings.columns.label"
+description_key = "settings.columns.description"
+default = 0
+min = 0
+max = 8
+
+# One panel per size: a panel's width is fixed by its manifest entry. The
+# widths must match SIZES in hub.luau. Height follows the content.
+[[panel]]
+id = "compact"
+entry = "panel-compact.luau"
+width = 320
+height = "content"
+max_height = 640
+placement = "floating"
+position = "center"
+
+[[panel]]
+id = "panel"
+entry = "panel.luau"
+width = 440
+height = "content"
+max_height = 640
+placement = "floating"
+position = "center"
+
+[[panel]]
+id = "wide"
+entry = "panel-wide.luau"
+width = 640
+height = "content"
+max_height = 640
+placement = "floating"
+position = "center"
+
+# `/hub` lists everything; global search only sees what is in the hub.
+[[launcher_provider]]
+id = "launcher"
+entry = "launcher.luau"
+prefix = "hub"
+glyph = "layout-grid"
+include_in_global_search = false
+
+[[launcher_provider]]
+id = "search"
+entry = "search.luau"
+prefix = "hubs"
+glyph = "layout-grid"
+include_in_global_search = true
+
+[[shortcut]]
+id = "open"
+entry = "shortcut.luau"
+
+[[widget]]
+id = "hub"
+entry = "widget.luau"
+
+  [[widget.setting]]
+  key = "glyph"
+  type = "glyph"
+  label_key = "settings.glyph.label"
+  default = "layout-grid"
