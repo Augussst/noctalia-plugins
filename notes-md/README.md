@@ -90,8 +90,9 @@ note, or add to the scratchpad.
 - **Network access:** none. Web images are not downloaded; they show as a link
   chip that opens in the browser.
 - **Files written:** notes in the notes folder (on save and task toggles), plus
-  the hidden `.pinned.json` and `.order.json` next to them. Links never create
-  notes.
+  the hidden `.pinned.json` and `.order.json` next to them. Notes are renamed
+  or deleted only when you do so in the panel. Links never create notes.
+- **Clipboard:** the copy button on a code block copies its text.
 - **Limits:**
   - A link cannot be clicked on its own inside a sentence (Noctalia's
     Markdown view does not support it): the whole line is the link, or a line

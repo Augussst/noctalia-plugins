@@ -3,67 +3,113 @@
 A panel of shortcuts with no limit on how many: the panels of your other
 plugins, Noctalia's own panels, and shell commands. Use it for the tools you
 open now and then, which don't deserve a keybind or one of the control
-center's six slots.
+center's six shortcut slots.
 
-## What it adds
+## Plugin
 
-| Entry | What it does |
+| Field | Value |
 | --- | --- |
-| Panels `:compact`, `:panel`, `:wide` | A grid of tiles in three sizes (320, 440 and 640 px wide; 3, 4 and 6 columns). The height follows the number of tiles. Click a tile to open it; the pencil button switches to edit mode. |
-| Launcher `/hub` | Your hub items, then every panel of every enabled plugin and the shell panels. Type to filter. |
-| Launcher (global search) | Only the items in your hub, so typing e.g. "notes" in the normal launcher finds them. Also reachable as `/hubs`. |
-| Control-center shortcut "More" | Opens the hub. Put it in one control-center slot to reach everything else. |
-| Bar widget | Opens the hub. |
+| ID | `augussst/shortcut-hub` |
+| Entries | Panels: `compact`, `panel`, `wide`; launcher providers: `launcher`, `search`; shortcut: `open`; bar widget: `hub` |
+| Launcher Prefix | `/hub` (every panel), `/hubs` (hub items only, also in global search) |
 
-## Using it
+## Requirements
 
-Open the hub any of these ways:
+`sh` on `PATH`: custom commands run with `/bin/sh -c`. Shell panels (Launcher,
+Clipboard, ...) are opened with the `noctalia` CLI, which comes with Noctalia.
 
-    noctalia msg panel-toggle augussst/shortcut-hub:panel     # normal
-    noctalia msg panel-toggle augussst/shortcut-hub:compact   # or :wide
-    noctalia msg panel-open augussst/shortcut-hub:panel edit  # straight into edit mode
+## Usage
 
-or bind the first command to a key, add the "More" tile to the control
-center, or add the bar widget.
+The hub is a panel in three sizes. Open one with:
 
-In edit mode:
+```sh
+noctalia msg panel-toggle augussst/shortcut-hub:compact
+noctalia msg panel-toggle augussst/shortcut-hub:panel
+noctalia msg panel-toggle augussst/shortcut-hub:wide
+```
 
-- **In the hub**: reorder with the arrows, remove with the bin.
-- **Plugin panels**: every `[[panel]]` of every enabled plugin. Some plugins
-  have internal panels (for example a result popup) that do nothing useful
-  when opened on their own; just don't add those.
-- **Shell panels**: Launcher, Control Center, Clipboard, Wallpaper, Session
+| Panel | Width | Columns |
+| --- | --- | --- |
+| `compact` | 320 px | 3 |
+| `panel` | 440 px | 4 |
+| `wide` | 640 px | 6 |
+
+The height follows the number of tiles. Click a tile to open it. Bind one of
+the commands above to a key, or use one of these:
+
+- **Control center:** add the **More** shortcut (`open`) in the control center's
+  shortcut settings. It opens the hub, so one slot reaches everything.
+- **Bar:** add the **Shortcut Hub** widget (`hub`) in the bar settings.
+- **Launcher:** type `/hub` to list your hub items, then every panel of every
+  enabled plugin and the shell panels; type more to filter, for example
+  `/hub notes`. Activating a result opens it. In normal launcher search, only
+  the items already in your hub appear, so internal panels of other plugins do
+  not clutter it (`/hubs` shows the same list).
+
+The control-center shortcut, the bar widget and the launcher open the size
+chosen in the **Panel size** setting.
+
+### Editing the hub
+
+Click the pencil in the panel header, or open the panel straight into edit
+mode:
+
+```sh
+noctalia msg panel-open augussst/shortcut-hub:panel edit
+```
+
+- **In the hub:** reorder with the arrows, remove with the bin.
+- **Plugin panels:** every `[[panel]]` of every enabled plugin, with a `+`
+  to add it. Some plugins have internal panels (for example a result popup)
+  that do nothing useful on their own; just don't add those.
+- **Shell panels:** Launcher, Control Center, Clipboard, Wallpaper, Session
   Menu, Settings.
-- **Custom command**: a label, a shell command, and an optional
+- **Custom command:** a label, a shell command, and an optional
   [Tabler icon](https://tabler.io/icons) name. Any `noctalia msg ...` command
-  works here, e.g. `noctalia msg nightlight-toggle` or
-  `noctalia msg caffeine-toggle`.
+  works, for example `noctalia msg nightlight-toggle`.
 
-Settings (Settings → Plugins → Shortcut Hub):
+Click the check mark to finish. The panel closes and reopens for a moment so
+its height fits the grid again: Noctalia grows a panel to fit its content but
+does not shrink it while it stays open.
 
-- **Panel size**: Compact, Normal or Wide. This is the size the bar widget,
-  the "More" tile and the launcher open. A keybind can open any size directly.
-- **Columns**: tiles per row; `0` (default) uses the size's own column count.
+## Settings
 
-While the panel is open, `noctalia msg plugin augussst/shortcut-hub:panel all
-edit` (or `view`) switches mode. Leaving edit mode closes and reopens the
-panel for a moment: Noctalia grows a panel to fit its content but does not
-shrink it while it stays open.
+| Setting | Type | Default | Description |
+| --- | --- | --- | --- |
+| `panel_size` | `select` | `normal` | Size opened by the control-center shortcut, the bar widget and the launcher: `compact`, `normal` or `wide`. Keybinds can open any size directly. |
+| `columns` | `int` | `0` | Tiles per row. `0` uses the size's own count (3, 4 or 6). Capped so tiles stay at least about 70 px wide. |
+| `glyph` (bar widget) | `glyph` | `layout-grid` | Icon of the bar widget. |
 
-## Limits
+Tile corners follow the shell's `corner_radius_scale`.
 
-- Tiles open panels or run commands. They cannot press another plugin's
-  control-center tile (`[[shortcut]]`): Noctalia has no API for that. Use a
-  command instead when the plugin offers one.
-- Plugin panels are found by reading each enabled plugin's `plugin.toml`
-  (from its source folder, or Noctalia's unpacked copy for git sources).
-  Only the `id`, `name`, `icon` and `[[panel]]` ids are read.
+## IPC
 
-## What it reads, writes and runs
+While a hub panel is open, switch between the grid and edit mode:
 
-- Reads: the shell settings `plugins.enabled` and `plugins.source`, and the
-  `plugin.toml` of each enabled plugin.
-- Writes: `items.json` in its own data folder
-  (`~/.local/state/noctalia/plugins/data/augussst/shortcut-hub/`).
-- Runs: `noctalia msg panel-toggle <id>` / `noctalia msg settings-toggle` for
-  shell panels, and your custom commands with `/bin/sh -c`.
+```sh
+noctalia msg plugin augussst/shortcut-hub:panel all edit
+noctalia msg plugin augussst/shortcut-hub:panel all view
+```
+
+Use `:compact` or `:wide` instead of `:panel` for the other sizes.
+
+## Notes
+
+- **Files read:** the shell settings `plugins.enabled` and `plugins.source`,
+  and the `plugin.toml` of each enabled plugin, to list their panels. Only
+  `id`, `name`, `icon` and the `[[panel]]` ids are read. For `path` sources
+  the manifest is read from the source folder; for git sources from
+  Noctalia's unpacked copy, found next to this plugin's data folder
+  (`<state>/plugins/materialized/<source>/<plugin>`). That layout is not a
+  documented API, so a future Noctalia version could break the panel list
+  (the hub itself keeps working).
+- **Files written:** only `items.json` in this plugin's data folder
+  (`noctalia.pluginDataDir()`).
+- **Processes:** `noctalia msg panel-toggle <id>` or
+  `noctalia msg settings-toggle` for shell panels, `sh -c` to reopen the panel
+  after editing (`sleep 0.2; noctalia msg panel-open <id>`), and your own
+  custom commands with `/bin/sh -c`. Plugin panels open through
+  `noctalia.togglePanel` without a process.
+- **Network:** none.
+- **Limit:** a tile can open a panel or run a command, but it cannot press
+  another plugin's control-center shortcut: Noctalia has no API for that.

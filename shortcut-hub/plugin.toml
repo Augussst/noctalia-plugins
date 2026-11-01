@@ -1,15 +1,18 @@
 id = "augussst/shortcut-hub"
 name = "Shortcut Hub"
-version = "1.0.1"
+version = "1.0.2"
 # 42: height = "content" on the panel. 43: container color roles.
 # Also uses ui callback closures (9), require (22), argv runAsync (24),
 # getSetting (26) and container tooltips (32).
 plugin_api = 43
 author = "augussst"
 license = "MIT"
-tags = ["productivity", "launcher"]
+# sh: custom commands run with /bin/sh -c. Shell panels are opened with the
+# noctalia CLI, which ships with the shell itself.
+dependencies = ["sh"]
+tags = ["productivity", "launcher", "panel", "shortcut"]
 icon = "layout-grid"
-description = "A panel of shortcuts to plugin panels, shell panels and commands, with no limit on how many. Also searchable from the launcher."
+description = "A panel of unlimited shortcuts to plugin panels, shell panels and commands, also in the launcher."
 
 [[setting]]
 key = "panel_size"
