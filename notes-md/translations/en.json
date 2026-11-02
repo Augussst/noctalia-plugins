@@ -22,6 +22,7 @@
   "no_matching_notes": "No matching notes",
   "note_missing": "Note not found",
   "open_note_link": "Open note",
+  "pin_panel": "Pin (stay open on outside click)",
   "pinned_no_drag": "Pinned notes stay on top",
   "preview": "Preview",
   "rename_exists": "A note with that name already exists",
@@ -39,11 +40,16 @@
     "notes_dir": {
       "description": "Where note files are stored",
       "label": "Notes Directory"
+    },
+    "pin_button": {
+      "description": "Adds a pin button to the panel header that keeps the panel open when you click other windows or open other panels. Noctalia cannot switch this live, so pinning swaps to a second panel: pinning replays the open animation, and a pinned panel closes instantly, without animation. Off by default for that reason.",
+      "label": "Pin button (experimental)"
     }
   },
   "sort_custom": "Your order (drag notes)",
   "sort_date": "By last change",
   "sort_name": "By name",
   "title": "Notes",
+  "unpin_panel": "Unpin and close (opens normally next time)",
   "web_image": "web image"
 }

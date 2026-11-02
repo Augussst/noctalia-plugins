@@ -1,6 +1,6 @@
 id = "augussst/notes-md"
 name = "Notes MD"
-version = "1.0.0"
+version = "1.1.0"
 # 32: tooltips on rows and images (link chips, images). Also uses ui.markdown (21)
 # and argv runAsync (24).
 plugin_api = 32
@@ -25,6 +25,13 @@ label_key = "settings.extension.label"
 description_key = "settings.extension.description"
 default = "md"
 
+[[setting]]
+key = "pin_button"
+type = "bool"
+label_key = "settings.pin_button.label"
+description_key = "settings.pin_button.description"
+default = false
+
 [[panel]]
 id = "panel"
 entry = "panel.luau"
@@ -32,6 +39,18 @@ width = 420
 height = "fill"
 placement = "floating"
 position = "center_right"
+
+# Same panel, pinned: stays open on outside clicks and when other panels open.
+# The pin button in the header swaps between the two entries.
+[[panel]]
+id = "pinned"
+entry = "panel.luau"
+width = 420
+height = "fill"
+placement = "floating"
+position = "center_right"
+dismiss_on_outside_click = false
+persistent = true
 
 [[launcher_provider]]
 id = "launcher"

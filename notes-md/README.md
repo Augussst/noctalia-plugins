@@ -15,7 +15,7 @@ A fork of Noctalia's official Notes plugin.
 | Field | Value |
 | --- | --- |
 | ID | `augussst/notes-md` |
-| Entries | Bar widget: `notes`; panel: `panel`; launcher provider: `launcher` |
+| Entries | Bar widget: `notes`; panels: `panel`, `pinned`; launcher provider: `launcher` |
 | Launcher Prefix | `/nt` |
 
 ## Requirements
@@ -32,6 +32,17 @@ noctalia msg panel-toggle augussst/notes-md:panel
 
 Notes with content open in the **preview**; empty notes open in the
 **editor**. The pencil / eye button in the note header switches between them.
+
+**Pin (experimental, off by default).** Turn on *Pin button* in the plugin
+settings to get a pin button in the panel header. It keeps the panel open:
+clicking another window or opening another shell panel no longer closes it.
+Clicking it again unpins and closes the panel; it opens as a normal panel next
+time. The bar widget and the launcher open the panel in whichever mode was
+last chosen; the pinned panel is the `pinned` entry (`noctalia msg
+panel-toggle augussst/notes-md:pinned`). Noctalia 5.4 cannot change a panel's
+outside-click behaviour while it is open, so pinning swaps to that second
+panel: pinning replays the open animation, and a pinned panel closes
+instantly, without animation.
 
 In the preview:
 

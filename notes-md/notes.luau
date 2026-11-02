@@ -1,6 +1,8 @@
 --!nonstrict
 -- Bar widget that opens the notes panel.
 
+local panels = require("./panels.luau")
+
 local glyph = noctalia.getConfig("glyph")
 
 local function render()
@@ -13,7 +15,7 @@ function update()
 end
 
 function onClick()
-  noctalia.togglePanel("augussst/notes-md:panel")
+  noctalia.togglePanel(panels.current())
 end
 
 render()

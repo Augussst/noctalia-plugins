@@ -12,6 +12,7 @@ local AUTOSAVE_IDLE_TICKS = 2 -- 1s panel ticks with no edits before a flush
 local SCRATCHPAD_BASE = "scratchpad"
 
 local dirs = require("./dirs.luau")
+local panels = require("./panels.luau")
 local preview = require("./preview.luau")
 
 local COPIED_TICKS = 2 -- seconds the "copied" check stays on a code block
@@ -38,6 +39,9 @@ local pins = {} -- filename -> true; persisted in a sidecar next to the notes
 local hoveredKey = nil
 local cornerRadiusScale = 1.0
 local closeButton = true
+local pinnedPanel = false -- this copy runs the pinned entry (stays open on outside clicks)
+local pinEnabled = false -- the "pin_button" setting (off by default: the swap is clunky)
+local isOpen = false
 
 local render
 
@@ -702,6 +706,17 @@ render = function()
     }))
   end
   table.insert(header, ui.button({ key = "header-new", glyph = "plus", variant = "primary", onClick = "onNewNote" }))
+  if pinEnabled then
+    -- Keyed by state: retained buttons keep a previously set glyph.
+    table.insert(header, ui.button({
+      key = "header-pin-" .. tostring(pinnedPanel),
+      glyph = pinnedPanel and "pinned-off" or "pin",
+      variant = "ghost",
+      tooltip = pinnedPanel and tx("unpin_panel", "Unpin and close (opens normally next time)")
+        or tx("pin_panel", "Pin (stay open on outside click)"),
+      onClick = "onTogglePanelPin",
+    }))
+  end
   if closeButton then
     table.insert(header, ui.button({ key = "header-close", glyph = "close", variant = "ghost", onClick = "onClosePanel" }))
   end
@@ -712,6 +727,22 @@ render = function()
 end
 
 function onOpen(_context)
+  isOpen = true
+  -- Both entries load this file; the shared flag says which one is being opened
+  -- (the widget, the launcher and the pin button all open panels.current()).
+  pinEnabled = noctalia.getConfig("pin_button") == true
+  pinnedPanel = panels.isPinned()
+  if pinnedPanel and not pinEnabled then
+    -- The setting was turned off while pinned: drop the mode and show the
+    -- normal panel instead (it takes any pending "open_note" handoff).
+    noctalia.state.set("panel_pinned", false)
+    panel.close()
+    noctalia.togglePanel(panels.NORMAL)
+    return
+  end
+  if pinnedPanel then
+    noctalia.state.set("pinned_open", true)
+  end
   notesDir = dirs.resolveNotesDir()
   cornerRadiusScale = noctalia.getSetting("shell.corner_radius_scale")
   closeButton = noctalia.getSetting("shell.show_close_buttons") ~= false
@@ -763,7 +794,31 @@ function onOpenScratchpad()
 end
 
 function onClose()
+  isOpen = false
+  if pinnedPanel then
+    noctalia.state.set("pinned_open", false)
+  end
   flush()
+end
+
+-- Pin: swap to the pinned entry, carrying over the open note (or the note list).
+-- Unpin: just close; the next open uses the normal entry and resumes the same
+-- note. (Reopening the normal entry right away replays the open animation, and
+-- plugins cannot open a panel without it.)
+function onTogglePanelPin()
+  flush()
+  local nowPinned = not pinnedPanel
+  -- Flip the flag first: the handoff below must not be taken by this copy.
+  noctalia.state.set("panel_pinned", nowPinned)
+  if view == "editor" and current ~= nil then
+    noctalia.state.set("open_note", current)
+  else
+    noctalia.state.set("open_home", true)
+  end
+  panel.close()
+  if nowPinned then
+    noctalia.togglePanel(panels.PINNED)
+  end
 end
 
 function update()
@@ -1020,4 +1075,29 @@ end
 
 noctalia.state.watch("notes_bump", function(_value)
   onExternalChange()
+end)
+
+-- The launcher does not toggle an open pinned panel (that would close it); it
+-- leaves the target in the state, and the open pinned copy takes it from there.
+local function onHandoff()
+  if not (isOpen and pinnedPanel and panels.isPinned()) then
+    return
+  end
+  if noctalia.state.get("open_home") == true then
+    noctalia.state.set("open_home", false)
+    onBack()
+    return
+  end
+  local target = noctalia.state.get("open_note")
+  if type(target) == "string" and target ~= "" then
+    noctalia.state.set("open_note", "")
+    openNote(target)
+  end
+end
+
+noctalia.state.watch("open_note", function(_value)
+  onHandoff()
+end)
+noctalia.state.watch("open_home", function(_value)
+  onHandoff()
 end)

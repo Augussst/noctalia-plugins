@@ -6,10 +6,10 @@
 -- lists the notes. Opening hands the target filename to the panel through
 -- noctalia.state ("open_note") and toggles the panel.
 
-local PANEL_ID = "augussst/notes-md:panel"
 local SCRATCHPAD_BASE = "scratchpad"
 local MAX_MATCHES = 8
 local dirs = require("./dirs.luau")
+local panels = require("./panels.luau")
 
 local lastText = ""
 
@@ -63,7 +63,7 @@ end
 
 local function openInPanel(file)
   noctalia.state.set("open_note", file)
-  noctalia.togglePanel(PANEL_ID)
+  panels.show()
 end
 
 -- Creates a timestamp-named note holding `content` and opens it in the panel.
@@ -216,7 +216,7 @@ function onActivate(id)
 
   if id == "home" then
     noctalia.state.set("open_home", true)
-    noctalia.togglePanel(PANEL_ID)
+    panels.show()
     return
   end
 
