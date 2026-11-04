@@ -27,9 +27,23 @@ function M.query(query, includeCatalog)
   local text = noctalia.string.trim(query)
   byId = {}
 
-  local catalog = items.catalog()
-  local catalogByKey = items.indexByKey(catalog)
   local saved = items.load()
+
+  -- The catalog reads and parses the manifest of every enabled plugin, which
+  -- is too slow to do on each keystroke of the global search (it exceeded the
+  -- script CPU budget). Build it only when the results need it: the `/hub`
+  -- list, or a saved item that has no label or glyph of its own to show.
+  local needCatalog = includeCatalog
+  if not needCatalog then
+    for _, item in ipairs(saved) do
+      if item.label == "" or (item.glyph == "" and item.kind ~= "command") then
+        needCatalog = true
+        break
+      end
+    end
+  end
+  local catalog = needCatalog and items.catalog() or {}
+  local catalogByKey = items.indexByKey(catalog)
   local seen = {}
   local results = {}
 
