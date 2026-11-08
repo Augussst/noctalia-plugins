@@ -27,6 +27,7 @@
   "preview": "Preview",
   "rename_exists": "A note with that name already exists",
   "save_failed": "Failed to save note",
+  "autosaves": "Saves automatically while you type",
   "saved": "Saved",
   "scratchpad": "Scratchpad",
   "settings": {

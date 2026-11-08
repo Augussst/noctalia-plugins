@@ -1,6 +1,6 @@
 id = "augussst/notes-md"
 name = "Notes MD"
-version = "1.1.0"
+version = "1.1.1"
 # 32: tooltips on rows and images (link chips, images). Also uses ui.markdown (21)
 # and argv runAsync (24).
 plugin_api = 32

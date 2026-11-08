@@ -32,6 +32,12 @@ local editorRev = 0 -- bumped to reseed the editor input after external changes
 local dirty = false
 local idleTicks = 0
 local pendingDelete = nil -- filename awaiting the second (confirm) click
+-- The title field only reports Enter (onSubmit), so clicking away used to throw
+-- the edit away. We keep what was typed and apply it when the user leaves the
+-- field (back, preview/edit toggle, new note, close, or after the body is edited).
+local titleDraft = nil
+local titleDraftFor = nil -- the note the draft belongs to
+local bodyEditedSinceTitle = false
 local sortMode = "name" -- "custom" (dragged order) | "name" | "date"
 local customOrder = {} -- filenames in dragged order; persisted next to the notes
 local DRAG_TYPE = "notes-md-note"
@@ -435,6 +441,11 @@ local function listView()
 end
 
 local function editorStatusLine()
+  if editorMode == "edit" then
+    -- No live status while editing: refreshing it means re-rendering the panel,
+    -- which snaps the editor's scroll back to the caret (see update()).
+    return tx("autosaves", "Saves automatically while you type")
+  end
   local words = select(2, buffer:gsub("%S+", ""))
   local chars = utf8.len(buffer) or #buffer
   local status = dirty and tr("editing") or tr("saved")
@@ -455,6 +466,7 @@ local function editorHeader()
     ui.input({
       key = "rename-" .. current,
       value = displayName(current),
+      onChange = "onTitleEdited",
       onSubmit = "onRename",
       -- The scratchpad's identity is its name; renaming it would just respawn it.
       enabled = current ~= scratchName(),
@@ -798,6 +810,7 @@ function onClose()
   if pinnedPanel then
     noctalia.state.set("pinned_open", false)
   end
+  commitTitle(true)
   flush()
 end
 
@@ -806,6 +819,7 @@ end
 -- note. (Reopening the normal entry right away replays the open animation, and
 -- plugins cannot open a panel without it.)
 function onTogglePanelPin()
+  commitTitle(true)
   flush()
   local nowPinned = not pinnedPanel
   -- Flip the flag first: the handoff below must not be taken by this copy.
@@ -832,8 +846,18 @@ function update()
   if dirty then
     idleTicks += 1
     if idleTicks >= AUTOSAVE_IDLE_TICKS then
+      local renamed = false
+      if bodyEditedSinceTitle then
+        renamed = commitTitle(true)
+      end
       flush()
-      render()
+      -- Every render() re-measures the whole editor text, and the focused editor
+      -- then snaps its view back to the caret. That is exactly when the user has
+      -- stopped typing and starts scrolling, so in edit mode the autosave stays
+      -- silent (a rename still needs it to refresh the keys).
+      if editorMode ~= "edit" or renamed then
+        render()
+      end
     end
   end
 end
@@ -884,6 +908,9 @@ local function continueList(oldText, newText)
 end
 
 function onEdited(value)
+  if titleDraft ~= nil then
+    bodyEditedSinceTitle = true -- focus left the title; apply it on the next autosave
+  end
   local continued = continueList(buffer, value)
   buffer = continued or value
   idleTicks = 0
@@ -904,6 +931,7 @@ function onEdited(value)
 end
 
 function onToggleEditorMode()
+  commitTitle(true)
   if editorMode == "preview" then
     editorMode = "edit"
   else
@@ -979,6 +1007,7 @@ function onFlushNow(value)
 end
 
 function onNewNote()
+  commitTitle(true)
   flush()
   local name = uniqueNoteName()
   local ok, err = noctalia.writeFile(notePath(name), "")
@@ -990,26 +1019,33 @@ function onNewNote()
   openNote(name)
 end
 
-function onRename(value)
+-- quiet: do not re-render (the panel is closing or the caller renders next).
+local function applyRename(value, quiet)
   if current == nil then
     return
   end
   local name = noctalia.string.trim(value):gsub("/", "")
   if name == "" or name == displayName(current) then
-    render()
+    if not quiet then
+      render()
+    end
     return
   end
   local target = name .. suffix
   if noctalia.fileExists(notePath(target)) then
     noctalia.notifyError(tr("title"), tr("rename_exists"))
-    render()
+    if not quiet then
+      render()
+    end
     return
   end
   flush()
   local ok, err = noctalia.renameFile(notePath(current), notePath(target))
   if not ok then
     noctalia.notifyError(tr("title"), err or "")
-    render()
+    if not quiet then
+      render()
+    end
     return
   end
   if pins[current] ~= nil then
@@ -1020,7 +1056,36 @@ function onRename(value)
   renameInOrder(current, target)
   current = target
   refreshFiles()
-  render()
+  if not quiet then
+    render()
+  end
+  return true
+end
+
+function onRename(value)
+  titleDraft = nil
+  bodyEditedSinceTitle = false
+  applyRename(value, false)
+end
+
+function onTitleEdited(value)
+  titleDraft = value
+  titleDraftFor = current
+  bodyEditedSinceTitle = false
+end
+
+-- Apply a title that was typed but never confirmed with Enter. Called wherever
+-- the user can leave the title field; harmless when there is no draft.
+function commitTitle(quiet)
+  local draft = titleDraft
+  local draftFor = titleDraftFor
+  titleDraft = nil
+  titleDraftFor = nil
+  bodyEditedSinceTitle = false
+  if draft == nil or current == nil or draftFor ~= current or current == scratchName() then
+    return false
+  end
+  return applyRename(draft, quiet) == true
 end
 
 function onEditorDelete()
@@ -1029,6 +1094,7 @@ function onEditorDelete()
 end
 
 function onBack()
+  commitTitle(true)
   flush()
   view = "list"
   current = nil
