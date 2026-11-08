@@ -73,10 +73,13 @@ noctalia msg plugins source remove augussst-dev
 noctalia msg plugins source add augussst git https://github.com/Augussst/noctalia-plugins
 noctalia msg plugins enable augussst/notes-md
 noctalia msg plugins enable augussst/lenovo-loq-camera-switch
+noctalia msg plugins enable augussst/shortcut-hub
 ```
 
-Your bar widgets and settings survive the swap: they are tied to the plugin
-id, not the source.
+Removing a source **disables every plugin it provided**, so enable all the ones
+you use again (the bar widgets of a disabled plugin just disappear). Your bar
+widgets and settings survive the swap: they are tied to the plugin id, not the
+source.
 
 ## Testing
 
