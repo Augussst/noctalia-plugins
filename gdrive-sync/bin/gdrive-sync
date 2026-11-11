@@ -1,0 +1,429 @@
+#!/usr/bin/env bash
+# gdrive-sync: two-way sync (rclone bisync) between local folders and Google Drive.
+# Part of the Noctalia plugin augussst/gdrive-sync; `gdrive-sync install` copies it to
+# ~/.local/bin and sets up the Dolphin menus and the systemd user timer.
+#
+# Files
+#   ~/.config/gdrive-sync/config.json    settings: root, prefix, interval_min, trash_days, accounts
+#   ~/.config/gdrive-sync/folders.json   synced folders: [{remote, remote_path, local, kind}]
+#   ~/.cache/gdrive-sync/status.json     last result per folder (read by the plugin)
+#   ~/.local/share/gdrive-sync/trash/    local files a sync deleted; Drive-side ones go to <remote>:<root>/.trash
+set -u
+VERSION="1.0.0"
+
+DIR="$HOME/.config/gdrive-sync"
+CONFIG="$DIR/config.json"
+FOLDERS="$DIR/folders.json"
+CACHE="$HOME/.cache/gdrive-sync"
+STATUS="$CACHE/status.json"
+TRASH="$HOME/.local/share/gdrive-sync/trash"
+OFFLINE="$HOME/Drive Offline"
+LOCK="${XDG_RUNTIME_DIR:-/tmp}/gdrive-sync.lock"
+BIN="$HOME/.local/bin/gdrive-sync"
+UNITS="$HOME/.config/systemd/user"
+MENUS="$HOME/.local/share/kio/servicemenus"
+
+mkdir -p "$DIR" "$CACHE" "$TRASH"
+[ -s "$FOLDERS" ] || echo '[]' > "$FOLDERS"
+[ -s "$STATUS" ] || echo '{"folders":{}}' > "$STATUS"
+[ -s "$CONFIG" ] || cat > "$CONFIG" <<'JSON'
+{
+  "root": "Linux Sync",
+  "prefix": "💻 {host} ",
+  "interval_min": 5,
+  "trash_days": 30,
+  "accounts": {
+    "gdrive":      { "label": "Personal", "icon": "folder-gdrive" },
+    "gdrive_work": { "label": "Work",     "icon": "folder-cloud" }
+  }
+}
+JSON
+jq -e 'has("interval_min") and has("trash_days")' "$CONFIG" >/dev/null 2>&1 || {
+  t="$(mktemp "$CONFIG.XXXX")"; jq '{interval_min: 5, trash_days: 30} + .' "$CONFIG" > "$t" && mv "$t" "$CONFIG"; }
+
+# ── helpers ──────────────────────────────────────────────────────────────────
+cfg()    { jq -r "$1 // empty" "$CONFIG"; }
+label()  { local l; l="$(cfg ".accounts[\"$1\"].label")"; echo "${l:-$1}"; }
+icon()   { local i; i="$(cfg ".accounts[\"$1\"].icon")"; echo "${i:-folder-cloud}"; }
+root()   { cfg .root; }
+notify() { notify-send -a "GDrive Sync" -i folder-cloud "$1" "${2:-}" 2>/dev/null || true; }
+die()    { echo "error: $*" >&2; exit 1; }
+now()    { date +%s; }
+
+jedit() { # jedit <file> <jq args...>: atomic in-place edit
+  local f="$1" t; shift; t="$(mktemp "$f.XXXX")"
+  if jq "$@" "$f" > "$t"; then mv "$t" "$f"; else rm -f "$t"; return 1; fi
+}
+set_status() { # set_status <local> <ok:true|false> <msg>
+  jedit "$STATUS" --arg l "$1" --argjson ok "$2" --arg m "$3" --argjson t "$(now)" \
+    '.folders[$l] = ((.folders[$l] // {}) + {last: $t, ok: $ok, msg: $m, synced_once: (((.folders[$l].synced_once) // false) or $ok)})'
+}
+set_running() { jedit "$STATUS" --arg l "$1" '.running = $l'; }
+
+new_rpath() { # <root>/<prefix><name>; a prefix ending in a letter or digit gets a space
+  local p; p="$(cfg .prefix)"; p="${p//\{host\}/$(hostname)}"
+  [[ "$p" =~ [[:alnum:]]$ ]] && p="$p "
+  printf '%s/%s%s' "$(root)" "$p" "$(basename "$1")"
+}
+entry_of()  { jq -c --arg l "$1" 'map(select(.local == $l)) | .[0] // empty' "$FOLDERS"; }
+is_drive_remote() { rclone listremotes --long 2>/dev/null | awk '{print $1, $2}' | grep -qx "$1: drive"; }
+
+# Nested pairs would sync the same files twice, so a folder may not contain or sit inside another one.
+overlaps() { # overlaps <local> <remote> <remote_path>: prints the conflicting entry, if any
+  jq -r --arg l "$1" --arg r "$2" --arg rp "$3" '
+    def under($a; $b): ($a == $b) or ($a | startswith($b + "/"));
+    .[] | select(under($l; .local) or under(.local; $l)
+                 or (.remote == $r and (under($rp; .remote_path) or under(.remote_path; $rp))))
+        | "\(.local)  ↔  \(.remote):\(.remote_path)"' "$FOLDERS" | head -1
+}
+
+mark()   { kwriteconfig6 --file "$2/.directory" --group "Desktop Entry" --key Icon "$(icon "$1")" 2>/dev/null || true; }
+unmark() {
+  [ -f "$1/.directory" ] || return 0
+  kwriteconfig6 --file "$1/.directory" --group "Desktop Entry" --key Icon --delete 2>/dev/null
+  [ "$(grep -vE '^\s*(\[Desktop Entry\])?\s*$' "$1/.directory" | wc -l)" -eq 0 ] && rm -f "$1/.directory"
+}
+
+trash_name() { basename "$1"; }   # trash subfolder for a remote_path
+bisync() { # bisync <remote> <remote_path> <local> [extra flags...]
+  local r="$1" rp="$2" d="$3"; shift 3
+  local n; n="$(trash_name "$rp")"
+  mkdir -p "$TRASH/$r/$n"
+  rclone bisync "$d" "$r:$rp" \
+    --backup-dir1 "$TRASH/$r/$n" --backup-dir2 "$r:$(root)/.trash/$n" \
+    --suffix "-$(date +%Y%m%d-%H%M%S)" --suffix-keep-extension \
+    --resilient --recover --conflict-resolve newer --create-empty-src-dirs "$@" -v
+}
+
+# Sync one folder and record the result. A folder with no successful sync on record
+# (new, or ~/.cache was wiped) gets --resync, which merges both sides and never deletes.
+sync_one() { # sync_one <remote> <remote_path> <local> [force-resync]
+  local r="$1" rp="$2" p="$3" force="${4:-}" log extra=() once
+  [ -d "$p" ] || { set_status "$p" false "local folder is missing"; return 1; }
+  once="$(jq -r --arg l "$p" '.folders[$l].synced_once // false' "$STATUS")"
+  { [ "$once" != true ] || [ -n "$force" ]; } && extra=(--resync)
+  mark "$r" "$p"
+  set_running "$p"
+  log="$(mktemp)"
+  rclone mkdir "$r:$rp" 2>/dev/null
+  if bisync "$r" "$rp" "$p" "${extra[@]}" >"$log" 2>&1; then
+    set_status "$p" true ""
+  elif [ ${#extra[@]} -eq 0 ] && grep -q "cannot find prior Path1 or Path2 listings" "$log" \
+       && bisync "$r" "$rp" "$p" --resync >"$log" 2>&1; then
+    set_status "$p" true "state was missing, resynced"
+  else
+    local msg; msg="$(grep -E 'ERROR|NOTICE: Failed' "$log" | tail -1 | sed -E 's/^[0-9/]+ [0-9:]+ //; s/\x1b\[[0-9;]*m//g')"
+    set_status "$p" false "${msg:-bisync failed}"
+    cat "$log" >&2; rm -f "$log"; set_running ""; return 1
+  fi
+  cat "$log" >&2; rm -f "$log"; set_running ""
+}
+
+with_lock() { exec 9>"$LOCK"; flock "$@" 9; }   # with_lock -n (skip if busy) | with_lock (wait)
+
+register() { # register <remote> <remote_path> <local> <kind>
+  jedit "$FOLDERS" --arg r "$1" --arg rp "$2" --arg l "$3" --arg k "$4" \
+    '. + [{remote: $r, remote_path: $rp, local: $l, kind: $k}]'
+}
+
+# ── trash ────────────────────────────────────────────────────────────────────
+# One JSON array of {side, remote, folder, path, name, deleted}; path is relative to the trash
+# folder of that side, name is the original file name, deleted is a unix time from the suffix.
+trash_json() {
+  local r
+  {
+    ( cd "$TRASH" 2>/dev/null && find . -mindepth 3 -type f -printf '%P\n' ) | jq -R '
+      capture("^(?<remote>[^/]+)/(?<folder>[^/]+)/(?<path>.+)$") | . + {side: "local"}'
+    for r in $(jq -r '[.[].remote] | unique | .[]' "$FOLDERS"); do
+      rclone lsjson -R --files-only "$r:$(root)/.trash" 2>/dev/null | jq --arg r "$r" '
+        .[] | .Path | capture("^(?<folder>[^/]+)/(?<path>.+)$") | . + {side: "drive", remote: $r}' 2>/dev/null
+    done
+  } | jq -s --argjson off "$(tzoff)" '
+    map(. + ((.path | capture("^(?<dir>(.*/)?)(?<base>.*)-(?<d>[0-9]{8})-(?<t>[0-9]{6})(?<ext>\\.[^./]*)?$")) // {}) )
+    | map(. + {
+        name: (if .base then ((.dir // "") + .base + (.ext // "")) else .path end),
+        deleted: (if .d then ((.d + .t) | strptime("%Y%m%d%H%M%S") | mktime - $off) else 0 end)
+      } | del(.dir, .base, .d, .t, .ext))
+    | sort_by(-.deleted)'
+}
+
+tzoff() { local z; z="$(date +%z)"; local h=$((10#${z:1:2})) m=$((10#${z:3:2})); local s=$(( h*3600 + m*60 )); [ "${z:0:1}" = - ] && s=$(( -s )); echo "$s"; }
+restored() { # "dir/a.txt" → "dir/a (restored).txt", "dir/README" → "dir/README (restored)"
+  local d="" b="$1"; case "$1" in */*) d="${1%/*}/"; b="${1##*/}";; esac
+  case "$b" in ?*.*) echo "$d${b%.*} (restored).${b##*.}";; *) echo "$d$b (restored)";; esac
+}
+entry_for_trash() { # entry_for_trash <remote> <folder>
+  jq -c --arg r "$1" --arg n "$2" 'map(select(.remote == $r and (.remote_path | split("/") | last) == $n)) | .[0] // empty' "$FOLDERS"
+}
+
+trash_restore() { # trash_restore <side> <remote> <folder> <path> <name>
+  local side="$1" r="$2" n="$3" path="$4" name="$5" e dest
+  e="$(entry_for_trash "$r" "$n")"; [ -n "$e" ] || die "no synced folder for $r/$n"
+  if [ "$side" = local ]; then
+    dest="$(jq -r .local <<<"$e")/$name"
+    [ -e "$dest" ] && dest="$(restored "$dest")"
+    mkdir -p "$(dirname "$dest")" && mv -- "$TRASH/$r/$n/$path" "$dest"
+  else
+    dest="$(jq -r .remote_path <<<"$e")/$name"
+    [ -n "$(rclone lsf "$r:$dest" 2>/dev/null)" ] && dest="$(restored "$dest")"
+    rclone moveto "$r:$(root)/.trash/$n/$path" "$r:$dest"
+  fi
+}
+trash_delete() { # trash_delete <side> <remote> <folder> <path>
+  if [ "$1" = local ]; then rm -f -- "$TRASH/$2/$3/$4"
+  else rclone deletefile "$2:$(root)/.trash/$3/$4"; fi
+}
+trash_clean() { # trash_clean [days]: delete trash items older than days (default trash_days; 0 = all)
+  local days="${1:-$(cfg .trash_days)}"; days="${days:-30}"
+  local cutoff=$(( $(now) - days * 86400 ))
+  trash_json | jq -r --argjson c "$cutoff" --argjson all "$([ "$days" = 0 ] && echo true || echo false)" \
+    '.[] | select($all or (.deleted > 0 and .deleted < $c)) | [.side, .remote, .folder, .path] | @tsv' |
+  while IFS=$'\t' read -r s r n p; do trash_delete "$s" "$r" "$n" "$p"; done
+  find "$TRASH" -mindepth 1 -type d -empty -delete 2>/dev/null
+  local r; for r in $(jq -r '[.[].remote] | unique | .[]' "$FOLDERS"); do rclone rmdirs "$r:$(root)/.trash" --leave-root 2>/dev/null; done
+  return 0
+}
+
+# ── install ──────────────────────────────────────────────────────────────────
+write_units() {
+  local m; m="$(cfg .interval_min)"; m="${m:-5}"
+  mkdir -p "$UNITS"
+  cat > "$UNITS/gdrive-sync.service" <<EOF
+[Unit]
+Description=GDrive Sync: rclone bisync of the folders in ~/.config/gdrive-sync/folders.json
+After=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=%h/.local/bin/gdrive-sync run
+EOF
+  cat > "$UNITS/gdrive-sync.timer" <<EOF
+[Unit]
+Description=GDrive Sync every ${m} minutes
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=${m}min
+
+[Install]
+WantedBy=timers.target
+EOF
+  systemctl --user daemon-reload
+}
+
+write_menus() {
+  mkdir -p "$MENUS"
+  local acts="" blocks="" r
+  for r in $(rclone listremotes --long 2>/dev/null | awk '$2 == "drive" {sub(":$", "", $1); print $1}'); do
+    acts="${acts}add_$r;"
+    blocks="${blocks}
+[Desktop Action add_$r]
+Name=Sync with Google Drive ($(label "$r"))
+Icon=$(icon "$r")
+Exec=$BIN add $r %F
+"
+  done
+  cat > "$MENUS/gdrive-sync.desktop" <<EOF
+[Desktop Entry]
+Type=Service
+MimeType=inode/directory;
+X-KDE-ServiceTypes=KonqPopupMenu/Plugin
+X-KDE-Protocols=file
+Actions=${acts}remove;
+X-KDE-Submenu=Google Drive Sync
+Icon=folder-cloud
+$blocks
+[Desktop Action remove]
+Name=Stop syncing this folder
+Icon=process-stop
+Exec=$BIN remove %F
+EOF
+  cat > "$MENUS/gdrive-sync-offline.desktop" <<EOF
+[Desktop Entry]
+Type=Service
+MimeType=inode/directory;
+X-KDE-ServiceTypes=KonqPopupMenu/Plugin
+X-KDE-Protocols=rclone
+Actions=offline;
+Icon=folder-download
+
+[Desktop Action offline]
+Name=Keep offline on this computer
+Icon=folder-download
+Exec=$BIN offline %U
+EOF
+  chmod +x "$MENUS/gdrive-sync.desktop" "$MENUS/gdrive-sync-offline.desktop"
+  command -v kbuildsycoca6 >/dev/null && kbuildsycoca6 >/dev/null 2>&1 || true
+}
+
+doctor_json() {
+  local deps=() d
+  # name|command|arch package|required
+  for d in "rclone|rclone|rclone|1" "jq|jq|jq|1" "flock|flock|util-linux|1" "systemctl|systemctl|systemd|1" \
+           "python3|python3|python|1" "notify-send|notify-send|libnotify|1" "kwriteconfig6|kwriteconfig6|kconfig|0" \
+           "zenity|zenity|zenity|0" "dolphin|dolphin|dolphin|0"; do
+    IFS='|' read -r name cmd pkg req <<<"$d"
+    deps+=("$(jq -nc --arg n "$name" --arg p "$pkg" --argjson r "$req" --argjson ok "$(command -v "$cmd" >/dev/null && echo true || echo false)" \
+      '{name: $n, package: $p, required: ($r == 1), ok: $ok}')")
+  done
+  local kio=false; ls /usr/lib/qt6/plugins/kf6/kio/rclone.so >/dev/null 2>&1 && kio=true
+  deps+=("$(jq -nc --argjson ok $kio '{name: "kio-rclone", package: "kio-rclone (AUR)", required: false, ok: $ok}')")
+  local inst="" ; [ -x "$BIN" ] && inst="$("$BIN" version 2>/dev/null)"
+  local remotes; remotes="$(rclone listremotes --long 2>/dev/null | awk '$2 == "drive" {sub(":$", "", $1); print $1}' | jq -R . | jq -s .)"
+  jq -n --arg v "$VERSION" --arg iv "$inst" --argjson remotes "${remotes:-[]}" \
+     --argjson timer "$(systemctl --user is-enabled gdrive-sync.timer >/dev/null 2>&1 && echo true || echo false)" \
+     --argjson menus "$([ -f "$MENUS/gdrive-sync.desktop" ] && echo true || echo false)" \
+     --argjson deps "$(printf '%s\n' "${deps[@]}" | jq -s .)" \
+     '{version: $v, installed_version: $iv, remotes: $remotes, timer: $timer, menus: $menus, deps: $deps}'
+}
+
+offline_target() { # rclone:/remote/path (Dolphin %U) or remote:path → "remote<TAB>path"
+  python3 -I - "$1" <<'PY'
+import sys, urllib.parse
+u = sys.argv[1]
+if u.startswith("rclone:"):
+    rest = urllib.parse.unquote(u[len("rclone:"):]).lstrip("/")
+    remote, _, path = rest.partition("/")
+else:
+    remote, _, path = u.partition(":")
+print(remote + "\t" + path.strip("/"))
+PY
+}
+
+# ── commands ─────────────────────────────────────────────────────────────────
+cmd="${1:-}"; [ $# -gt 0 ] && shift
+case "$cmd" in
+  version) echo "$VERSION" ;;
+
+  add) # add <remote> <folder>...   sync local folders to <root>/<prefix><name> on Drive
+    r="${1:?usage: add <remote> <folder>...}"; shift
+    is_drive_remote "$r" || { notify "Unknown account" "$r is not a Google Drive remote in rclone"; die "$r is not a drive remote"; }
+    with_lock
+    for p in "$@"; do
+      p="$(realpath -- "$p")"; name="$(basename "$p")"
+      case "$p" in "$HOME"|/|"$HOME"/GDrive*|"$OFFLINE"|"$OFFLINE"/*) notify "Not allowed" "$p"; continue;; esac
+      [ -d "$p" ] || { notify "Not a folder" "$p"; continue; }
+      cur="$(entry_of "$p")"
+      if [ -n "$cur" ]; then
+        cr="$(jq -r .remote <<<"$cur")"
+        if [ "$cr" = "$r" ]; then notify "Already syncing" "$name → $(label "$r")"
+        else notify "Already synced elsewhere" "$name is synced to $(label "$cr"). Stop it first."; fi
+        continue
+      fi
+      rp="$(new_rpath "$p")"
+      o="$(overlaps "$p" "$r" "$rp")"; [ -n "$o" ] && { notify "Overlaps another synced folder" "$o"; continue; }
+      notify "Syncing…" "$name → $(label "$r"): $rp"
+      register "$r" "$rp" "$p" local
+      if sync_one "$r" "$rp" "$p" force 2>/dev/null; then
+        notify "Sync enabled" "$name ↔ $(label "$r"): $rp"
+      else
+        jedit "$FOLDERS" --arg l "$p" 'map(select(.local != $l))'
+        notify "Sync FAILED" "$name: $(jq -r --arg l "$p" '.folders[$l].msg' "$STATUS")"
+      fi
+    done ;;
+
+  offline) # offline <rclone:/remote/path | remote:path>   keep a Drive folder in ~/Drive Offline
+    IFS=$'\t' read -r r rp <<<"$(offline_target "${1:?usage: offline <rclone:/remote/path>}")"
+    is_drive_remote "$r" || { notify "Unknown account" "$r"; die "$r is not a drive remote"; }
+    [ -n "$rp" ] || { notify "Not allowed" "Pick a folder, not the whole Drive"; die "whole drive"; }
+    rt="$(root)"
+    case "$rp" in "$rt"|"$rt"/*) notify "Already on this computer" "Folders under '$rt' are synced from this computer"; die "under root";; esac
+    p="$OFFLINE/$(label "$r")/$rp"
+    o="$(overlaps "$p" "$r" "$rp")"; [ -n "$o" ] && { notify "Overlaps another synced folder" "$o"; die "overlap: $o"; }
+    rclone lsf --max-depth 1 "$r:$rp" >/dev/null 2>&1 || { notify "Not found on Drive" "$rp"; die "not found: $r:$rp"; }
+    with_lock
+    mkdir -p "$p"
+    notify "Downloading…" "$rp ($(label "$r")) → $p"
+    register "$r" "$rp" "$p" offline
+    if sync_one "$r" "$rp" "$p" force 2>/dev/null; then notify "Available offline" "$rp → $p"
+    else jedit "$FOLDERS" --arg l "$p" 'map(select(.local != $l))'; notify "Download FAILED" "$rp: $(jq -r --arg l "$p" '.folders[$l].msg' "$STATUS")"; fi ;;
+
+  remove) # remove <folder>...   stop syncing; files on both sides stay
+    with_lock
+    for p in "$@"; do
+      p="$(realpath -m -- "$p")"
+      [ -n "$(entry_of "$p")" ] || { notify "Not synced" "$(basename "$p")"; continue; }
+      jedit "$FOLDERS" --arg l "$p" 'map(select(.local != $l))'
+      jedit "$STATUS" --arg l "$p" 'del(.folders[$l])'
+      [ -d "$p" ] && unmark "$p"
+      notify "Sync stopped" "$(basename "$p") (files on both sides are left untouched)"
+    done ;;
+
+  run) # run [folder...]   timer: all folders, skipped if a sync is running; with folders: waits
+    if [ $# -eq 0 ]; then with_lock -n || { echo "already running"; exit 0; }; else with_lock; fi
+    rc=0
+    want="$(printf '%s\n' "$@" | while IFS= read -r a; do [ -n "$a" ] && realpath -m -- "$a"; done)"
+    while IFS=$'\t' read -r r rp p; do
+      [ -z "$want" ] || grep -qxF -- "$p" <<<"$want" || continue
+      sync_one "$r" "$rp" "$p" || rc=1
+    done < <(jq -r '.[] | [.remote, .remote_path, .local] | @tsv' "$FOLDERS")
+    jedit "$STATUS" --argjson t "$(now)" '.last_run = $t'
+    last_clean="$(jq -r '.last_clean // 0' "$STATUS")"
+    if [ $(( $(now) - last_clean )) -gt 86400 ]; then trash_clean; jedit "$STATUS" --argjson t "$(now)" '.last_clean = $t'; fi
+    exit $rc ;;
+
+  resync) # resync [folder...]   rebuild bisync state: merges both sides, never deletes
+    with_lock; rc=0
+    while IFS=$'\t' read -r r rp p; do
+      [ $# -eq 0 ] || { for a in "$@"; do [ "$(realpath -m -- "$a")" = "$p" ] && break; done; [ "$(realpath -m -- "$a")" = "$p" ]; } || continue
+      sync_one "$r" "$rp" "$p" force || rc=1
+    done < <(jq -r '.[] | [.remote, .remote_path, .local] | @tsv' "$FOLDERS")
+    exit $rc ;;
+
+  list) jq -r '.[] | "\(.remote)\t\(.remote_path)\t\(.local)"' "$FOLDERS" ;;
+
+  trash) # trash list | restore <side> <remote> <folder> <path> <name> | delete <side> <remote> <folder> <path> | clean [days]
+    sub="${1:-list}"; [ $# -gt 0 ] && shift
+    case "$sub" in
+      list) trash_json ;;
+      restore) trash_restore "$@" ;;
+      delete) trash_delete "$@" ;;
+      clean) trash_clean "$@" ;;
+      *) die "unknown trash command: $sub" ;;
+    esac ;;
+
+  config) # config set <key> <value>   root | prefix | interval_min | trash_days | label.<remote>
+    [ "${1:-}" = set ] || die "usage: config set <key> <value>"
+    k="${2:?key}"; v="${3-}"
+    case "$k" in
+      root)   [ -n "$v" ] || die "root cannot be empty"; jedit "$CONFIG" --arg v "${v%/}" '.root = $v' ;;
+      prefix) jedit "$CONFIG" --arg v "$v" '.prefix = $v' ;;
+      interval_min|trash_days)
+        [[ "$v" =~ ^[0-9]+$ ]] || die "$k must be a number"
+        [ "$k" = interval_min ] && [ "$v" -lt 1 ] && die "interval must be at least 1 minute"
+        jedit "$CONFIG" --arg k "$k" --argjson v "$v" '.[$k] = $v'
+        [ "$k" = interval_min ] && [ -f "$UNITS/gdrive-sync.timer" ] && { write_units; systemctl --user restart gdrive-sync.timer; } ;;
+      label.*) jedit "$CONFIG" --arg r "${k#label.}" --arg v "$v" '.accounts[$r].label = $v'; [ -f "$MENUS/gdrive-sync.desktop" ] && write_menus ;;
+      *) die "unknown key: $k" ;;
+    esac ;;
+
+  doctor) doctor_json ;;
+
+  install) # install the CLI, Dolphin menus and timer (run from the plugin's copy)
+    src="$(realpath -- "${BASH_SOURCE[0]}")"
+    mkdir -p "$(dirname "$BIN")"
+    [ "$src" = "$(realpath -m -- "$BIN")" ] || install -m 755 "$src" "$BIN"
+    write_units; write_menus
+    systemctl --user enable --now gdrive-sync.timer
+    echo "installed $VERSION" ;;
+
+  uninstall) # remove CLI, menus and timer; keeps config, folders and both sides' files
+    systemctl --user disable --now gdrive-sync.timer 2>/dev/null
+    rm -f "$UNITS/gdrive-sync.service" "$UNITS/gdrive-sync.timer" "$MENUS/gdrive-sync.desktop" "$MENUS/gdrive-sync-offline.desktop" "$BIN"
+    systemctl --user daemon-reload
+    echo "uninstalled (config kept in $DIR)" ;;
+
+  *) cat <<EOF
+gdrive-sync $VERSION
+  add <remote> <folder>...   sync local folders to Drive (<root>/<prefix><name>)
+  offline <rclone:/remote/path | remote:path>   keep a Drive folder in ~/Drive Offline
+  remove <folder>...         stop syncing a folder (files stay on both sides)
+  run [folder...]            sync now (all folders without arguments)
+  resync [folder...]         rebuild sync state; merges both sides, never deletes
+  list | doctor | version
+  trash list | restore <side> <remote> <folder> <path> <name> | delete <side> <remote> <folder> <path> | clean [days]
+  config set <root|prefix|interval_min|trash_days|label.<remote>> <value>
+  install | uninstall
+EOF
+     [ -z "$cmd" ] || exit 1 ;;
+esac

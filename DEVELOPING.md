@@ -74,6 +74,7 @@ noctalia msg plugins source add augussst git https://github.com/Augussst/noctali
 noctalia msg plugins enable augussst/notes-md
 noctalia msg plugins enable augussst/lenovo-loq-camera-switch
 noctalia msg plugins enable augussst/shortcut-hub
+noctalia msg plugins enable augussst/gdrive-sync
 ```
 
 Removing a source **disables every plugin it provided**, so enable all the ones

@@ -1,0 +1,27 @@
+id = "augussst/gdrive-sync"
+name = "GDrive Sync"
+version = "1.0.0"
+# 43: container color roles (surface_container). Also uses ui callback
+# closures (9), require (22), argv runAsync (24), getSetting (26) and
+# per-second panel ticks.
+plugin_api = 43
+author = "augussst"
+license = "MIT"
+# bin/gdrive-sync is a bash script around rclone bisync; the Setup page checks
+# the rest (flock, systemd, python3, notify-send, zenity, kwriteconfig6).
+dependencies = ["bash", "rclone", "jq"]
+tags = ["sync", "cloud", "google-drive", "files", "backup"]
+icon = "brand-google-drive"
+description = "Two-way Google Drive sync for chosen folders (rclone bisync), with offline copies of Drive folders, a sync trash and Dolphin right-click menus."
+
+[[panel]]
+id = "panel"
+entry = "panel.luau"
+width = 540
+height = 640
+placement = "floating"
+position = "center"
+
+[[widget]]
+id = "status"
+entry = "widget.luau"
