@@ -13,6 +13,7 @@ Plugins for the [Noctalia](https://github.com/noctalia-dev/noctalia) shell.
 | [Lenovo LOQ Camera Switch](lenovo-loq-camera-switch/README.md) | Bar icon and OSD for the physical camera shutter switch. **Tested on the LOQ 15IRX9 only**; needs a one-time root setup. |
 | [Shortcut Hub](shortcut-hub/README.md) | A panel of shortcuts with no limit: other plugins' panels, shell panels and commands. Also searchable from the launcher (`/hub`). |
 | [GDrive Sync](gdrive-sync/README.md) | Two-way Google Drive sync for chosen folders (rclone bisync), offline copies of Drive folders, a sync trash, and Dolphin right-click menus. Several accounts. |
+| [Session Restore](nirinit-session/README.md) | Asks before niri restores your last session (wraps nirinit): Restore, Start fresh or Later, with the saved windows listed. |
 
 ## Install
 
@@ -26,6 +27,7 @@ Then enable the plugins you want:
     noctalia msg plugins enable augussst/lenovo-loq-camera-switch
     noctalia msg plugins enable augussst/shortcut-hub
     noctalia msg plugins enable augussst/gdrive-sync
+    noctalia msg plugins enable augussst/nirinit-session
 
 You can also add the source in **Settings → Plugins → Add source**. After
 enabling, add the plugin's widget to your bar in Noctalia's settings, and read

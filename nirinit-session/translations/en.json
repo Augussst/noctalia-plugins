@@ -1,0 +1,65 @@
+{
+  "title": "Session Restore",
+  "close": "Close",
+  "loading": "Loading…",
+  "ask": "Restore your previous session? ({n} windows)",
+  "saved": "Saved {ago}",
+  "skipped": "{n} more are skipped by your nirinit config.",
+  "restore": "Restore",
+  "fresh": "Start fresh",
+  "later": "Later",
+  "restoring": "Restoring… windows open one by one, this can take a minute.",
+  "restore_failed": "Restore failed",
+  "discard_failed": "Could not discard the session",
+  "undo_failed": "Could not bring the session back",
+  "nothing": "No session is waiting.",
+  "running": "nirinit is running and saving your windows.",
+  "not_running": "nirinit is not running, so nothing is being saved.",
+  "last": "You started fresh last time. The old session ({n} windows) is still saved.",
+  "undo": "Bring it back",
+  "time": {
+    "unknown": "at an unknown time",
+    "just_now": "just now",
+    "minutes": "{n} min ago",
+    "hours": "{n} h ago",
+    "days": "{n} days ago"
+  },
+  "widget": {
+    "pending": "A saved session is waiting ({n} windows)",
+    "idle": "Session Restore: nothing waiting",
+    "not_running": "Session Restore: nirinit is not running",
+    "unavailable": "Session Restore: cannot read status"
+  },
+  "settings": {
+    "hide_when_idle": {
+      "label": "Hide the icon when idle",
+      "description": "Show the bar icon only while a saved session is waiting."
+    },
+    "auto_open": {
+      "label": "Open at login",
+      "description": "Open the panel by itself when a saved session is waiting."
+    }
+  },
+  "tab": {
+    "session": "Session",
+    "settings": "Settings"
+  },
+  "cfg": {
+    "login": "At login",
+    "ask": "Ask me",
+    "auto": "Restore automatically",
+    "ask_hint": "A saved session waits until you choose Restore, Start fresh or Later.",
+    "auto_hint": "Windows reopen at login without asking, like plain nirinit.",
+    "interval": "Save the session every (seconds)",
+    "interval_hint": "0 uses the value in niri's autostart line. Applies at next login.",
+    "save": "Save",
+    "bad_interval": "Enter a whole number of seconds (0 to 86400).",
+    "skip": "Never reopen these apps",
+    "skip_hint": "Matched by app id. Terminals and apps that restore their own windows belong here.",
+    "add_from_windows": "Add from your saved windows:",
+    "remove": "Remove",
+    "add": "Never reopen",
+    "next_login": "Changes to this list apply the next time nirinit starts (next login). A backup is kept as config.toml.bak.",
+    "failed": "Could not change the setting"
+  }
+}

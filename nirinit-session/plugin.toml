@@ -1,0 +1,39 @@
+id = "augussst/nirinit-session"
+name = "Session Restore"
+version = "1.2.0"
+# 43: same level as GDrive Sync (ui callback closures, require, argv
+# runAsync, getSetting, per-second panel ticks).
+plugin_api = 43
+author = "augussst"
+license = "MIT"
+icon = "history"
+description = "Ask before niri restores your last session. Wraps nirinit: shows the saved windows at login, with Restore, Start fresh and Later."
+# bin/nirinit-ctl is a Python script around nirinit (not part of this plugin).
+dependencies = ["python3", "nirinit"]
+tags = ["session", "niri", "restore", "bar"]
+
+[[setting]]
+key = "auto_open"
+type = "bool"
+label_key = "settings.auto_open.label"
+description_key = "settings.auto_open.description"
+default = true
+
+[[setting]]
+key = "hide_when_idle"
+type = "bool"
+label_key = "settings.hide_when_idle.label"
+description_key = "settings.hide_when_idle.description"
+default = true
+
+[[panel]]
+id = "panel"
+entry = "panel.luau"
+width = 400
+height = 540
+placement = "floating"
+position = "center"
+
+[[widget]]
+id = "indicator"
+entry = "widget.luau"

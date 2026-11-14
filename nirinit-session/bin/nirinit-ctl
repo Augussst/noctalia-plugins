@@ -1,0 +1,326 @@
+#!/usr/bin/env python3
+"""nirinit-ctl: ask before nirinit restores the last session.
+
+nirinit restores the saved session the moment it starts. This wrapper holds
+that session back instead:
+
+  start [--auto] [nirinit args]   Run from niri's autostart instead of nirinit.
+                                  Moves a saved session with windows to
+                                  pending.json, then becomes nirinit (which now
+                                  has nothing to restore and just saves).
+                                  --auto skips the hold: restore as before.
+  status                          JSON: the pending session, the discarded one,
+                                  whether nirinit runs.
+  restore                         Reopen the pending session (a second, short
+                                  nirinit run on a copy), then forget it.
+  discard                         Drop the pending session (kept as
+                                  session.last.json).
+  undo                            Bring session.last.json back as pending.
+  config                          JSON: skip list, mode, save interval, apps seen.
+  skip-add APP / skip-remove APP  Edit [skip] apps in nirinit's config.toml
+                                  (a .bak copy is kept). Needs a nirinit restart.
+  set mode ask|auto               Ask before restoring, or restore like plain nirinit.
+  set save_interval SECONDS       Overrides --save-interval (0 = use the argument).
+  claim                           Prints "yes" once per pending session: lets
+                                  one bar widget open the prompt, not several.
+
+Files (all in ~/.local/share/nirinit/): session.json (live, saved by nirinit),
+pending.json, session.last.json, session.restored.json.
+"""
+import fcntl
+import json
+import os
+import re
+import shutil
+import subprocess
+import sys
+import tempfile
+import time
+import tomllib
+from pathlib import Path
+
+HOME = Path.home()
+DATA = Path(os.environ.get("XDG_DATA_HOME") or HOME / ".local/share") / "nirinit"
+CACHE = Path(os.environ.get("XDG_CACHE_HOME") or HOME / ".cache") / "nirinit-ctl"
+CONFIG = Path(
+    os.environ.get("NIRINIT_CONFIG")
+    or Path(os.environ.get("XDG_CONFIG_HOME") or HOME / ".config") / "nirinit/config.toml"
+)
+CTL_CONF = CONFIG.parent / "ctl.json"
+LIVE = DATA / "session.json"
+PENDING = DATA / "pending.json"
+LAST = DATA / "session.last.json"
+RESTORED = DATA / "session.restored.json"
+CLAIM = CACHE / "claimed"
+RESTORE_TIMEOUT = 180  # seconds; every window is waited for up to 5 s
+
+
+def nirinit_bin():
+    for c in (os.environ.get("NIRINIT_BIN"), str(HOME / ".local/bin/nirinit"), shutil.which("nirinit")):
+        if c and os.access(c, os.X_OK):
+            return c
+    sys.exit("nirinit-ctl: nirinit not found")
+
+
+def skip_apps():
+    try:
+        return set(tomllib.loads(CONFIG.read_text()).get("skip", {}).get("apps", []))
+    except (OSError, tomllib.TOMLDecodeError):
+        return set()
+
+
+def load(path):
+    try:
+        data = json.loads(path.read_text())
+    except (OSError, ValueError):
+        return None
+    return data if isinstance(data, list) else None
+
+
+def summarize(path):
+    """Windows nirinit would actually reopen, counted per app."""
+    windows = load(path)
+    if windows is None:
+        return None
+    skip = skip_apps()
+    counts, skipped = {}, 0
+    for w in windows:
+        app = w.get("app_id")
+        if not app or not w.get("launch_command"):
+            continue
+        if app in skip:
+            skipped += 1
+            continue
+        counts[app] = counts.get(app, 0) + 1
+    apps = [{"app_id": a, "count": n} for a, n in sorted(counts.items(), key=lambda kv: (-kv[1], kv[0]))]
+    return {
+        "count": sum(counts.values()),
+        "skipped": skipped,
+        "apps": apps,
+        "saved_at": int(path.stat().st_mtime),
+    }
+
+
+def ctl_conf():
+    conf = {"mode": "ask", "save_interval": 0}
+    try:
+        data = json.loads(CTL_CONF.read_text())
+        if data.get("mode") in ("ask", "auto"):
+            conf["mode"] = data["mode"]
+        conf["save_interval"] = max(0, int(data.get("save_interval", 0)))
+    except (OSError, ValueError, TypeError, AttributeError):
+        pass
+    return conf
+
+
+def write_skip(apps):
+    """Rewrite `apps = [...]` under [skip], keeping the rest of the file."""
+    text = CONFIG.read_text() if CONFIG.exists() else ""
+    arr = "apps = [" + ", ".join(json.dumps(a) for a in apps) + "]"
+    head = re.search(r"^\[skip\][ \t]*$", text, re.M)
+    if not head:
+        text = text.rstrip("\n") + "\n\n[skip]\n" + arr + "\n"
+    else:
+        start = head.end()
+        nxt = re.search(r"^\[", text[start:], re.M)
+        end = start + nxt.start() if nxt else len(text)
+        sect = text[start:end]
+        pat = re.compile(r"^apps[ \t]*=[ \t]*\[.*?\][ \t]*$", re.M | re.S)
+        if pat.search(sect):
+            sect = pat.sub(lambda _m: arr, sect, count=1)
+        else:
+            sect = sect.rstrip("\n") + "\n" + arr + "\n" + ("\n" if nxt else "")
+        text = text[:start] + sect + text[end:]
+    if tomllib.loads(text).get("skip", {}).get("apps") != apps:
+        sys.exit("refusing to write: the edit did not parse back as expected")
+    CONFIG.parent.mkdir(parents=True, exist_ok=True)
+    if CONFIG.exists():
+        shutil.copy(CONFIG, CONFIG.with_name(CONFIG.name + ".bak"))
+    tmp = CONFIG.with_name(CONFIG.name + ".tmp")
+    tmp.write_text(text)
+    os.replace(tmp, CONFIG)
+
+
+def seen_apps():
+    names = set()
+    for p in (LIVE, PENDING, LAST):
+        for w in load(p) or []:
+            if w.get("app_id") and w.get("launch_command"):
+                names.add(w["app_id"])
+    return sorted(names)
+
+
+def running():
+    return subprocess.run(["pgrep", "-x", "nirinit"], capture_output=True).returncode == 0
+
+
+def lock():
+    CACHE.mkdir(parents=True, exist_ok=True)
+    f = open(CACHE / "lock", "w")
+    fcntl.flock(f, fcntl.LOCK_EX)
+    return f
+
+
+def cmd_start(args):
+    DATA.mkdir(parents=True, exist_ok=True)
+    auto = bool(args) and args[0] == "--auto"
+    if auto:
+        args = args[1:]
+    conf = ctl_conf()
+    auto = auto or conf["mode"] == "auto"
+    if conf["save_interval"] > 0:
+        # The saved setting wins over an --save-interval in the autostart line.
+        kept, skip_next = [], False
+        for a in args:
+            if skip_next:
+                skip_next = False
+            elif a == "--save-interval":
+                skip_next = True
+            elif not a.startswith("--save-interval="):
+                kept.append(a)
+        args = kept + ["--save-interval", str(conf["save_interval"])]
+    if not auto:
+        info = summarize(LIVE)
+        if info and info["count"] > 0:
+            os.replace(LIVE, PENDING)
+    exe = nirinit_bin()
+    os.execv(exe, [exe] + args)
+
+
+def cmd_status(_):
+    pending = summarize(PENDING) if PENDING.exists() else None
+    last = summarize(LAST) if LAST.exists() else None
+    claimed = False
+    if pending:
+        try:
+            claimed = CLAIM.read_text().strip() == str(pending["saved_at"])
+        except OSError:
+            pass
+    print(json.dumps({
+        "pending": pending if pending and pending["count"] > 0 else None,
+        "claimed": claimed,
+        "last": last if last and last["count"] > 0 else None,
+        "running": running(),
+    }))
+
+
+def cmd_claim(_):
+    with lock():
+        info = summarize(PENDING) if PENDING.exists() else None
+        if not info or info["count"] == 0:
+            print("no")
+            return
+        stamp = str(info["saved_at"])
+        try:
+            if CLAIM.read_text().strip() == stamp:
+                print("no")
+                return
+        except OSError:
+            pass
+        CLAIM.write_text(stamp)
+        print("yes")
+
+
+def cmd_restore(_):
+    with lock():
+        if not PENDING.exists():
+            sys.exit("nothing to restore")
+        tmp = Path(tempfile.mkdtemp(prefix="nirinit-ctl-"))
+        try:
+            (tmp / "nirinit").mkdir()
+            shutil.copy(PENDING, tmp / "nirinit/session.json")
+            env = dict(os.environ, XDG_DATA_HOME=str(tmp))
+            log = tmp / "log"
+            with open(log, "w") as out:
+                # Same config, but a throwaway data dir: this run restores and
+                # is killed before its first save, so it never touches the
+                # live session.json.
+                proc = subprocess.Popen(
+                    [nirinit_bin(), "--save-interval", "86400"],
+                    env=env, stdout=out, stderr=out,
+                )
+                deadline = time.time() + RESTORE_TIMEOUT
+                done = False
+                while time.time() < deadline and proc.poll() is None:
+                    text = log.read_text(errors="replace")
+                    if "restored session" in text or "is empty" in text:
+                        done = True
+                        break
+                    time.sleep(0.5)
+                if proc.poll() is None:
+                    proc.terminate()
+                    proc.wait(10)
+            if not done:
+                sys.exit("restore did not finish: " + log.read_text(errors="replace")[-400:])
+            os.replace(PENDING, RESTORED)
+            print("ok")
+        finally:
+            shutil.rmtree(tmp, ignore_errors=True)
+
+
+def cmd_discard(_):
+    with lock():
+        if PENDING.exists():
+            os.replace(PENDING, LAST)
+    print("ok")
+
+
+def cmd_undo(_):
+    with lock():
+        if not LAST.exists():
+            sys.exit("nothing to bring back")
+        if PENDING.exists():
+            sys.exit("a session is already waiting")
+        os.replace(LAST, PENDING)
+    print("ok")
+
+
+def cmd_config(_):
+    conf = ctl_conf()
+    print(json.dumps({
+        "skip": sorted(skip_apps()), "mode": conf["mode"],
+        "save_interval": conf["save_interval"], "seen": seen_apps(),
+    }))
+
+
+def cmd_skip_add(args):
+    with lock():
+        apps = sorted(skip_apps() | {a for a in args if a})
+        write_skip(apps)
+    print("ok")
+
+
+def cmd_skip_remove(args):
+    with lock():
+        write_skip(sorted(skip_apps() - set(args)))
+    print("ok")
+
+
+def cmd_set(args):
+    if len(args) != 2:
+        sys.exit("usage: set mode ask|auto | set save_interval SECONDS")
+    key, value = args
+    with lock():
+        conf = ctl_conf()
+        if key == "mode" and value in ("ask", "auto"):
+            conf["mode"] = value
+        elif key == "save_interval" and value.isdigit() and int(value) <= 86400:
+            conf["save_interval"] = int(value)
+        else:
+            sys.exit("bad setting")
+        CTL_CONF.parent.mkdir(parents=True, exist_ok=True)
+        CTL_CONF.write_text(json.dumps(conf, indent=2) + "\n")
+    print("ok")
+
+
+COMMANDS = {
+    "config": cmd_config, "skip-add": cmd_skip_add,
+    "skip-remove": cmd_skip_remove, "set": cmd_set,
+    "start": cmd_start, "status": cmd_status, "restore": cmd_restore,
+    "discard": cmd_discard, "undo": cmd_undo, "claim": cmd_claim,
+}
+
+if __name__ == "__main__":
+    if len(sys.argv) < 2 or sys.argv[1] not in COMMANDS:
+        sys.exit(__doc__)
+    COMMANDS[sys.argv[1]](sys.argv[2:])
